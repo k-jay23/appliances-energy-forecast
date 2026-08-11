@@ -1,0 +1,16 @@
+# Core analysis (Parts 1-6, 8)
+pandas==3.0.2
+numpy==2.4.4
+matplotlib==3.10.8
+statsmodels==0.14.6
+scikit-learn==1.8.0
+xgboost==3.4.0
+lightgbm==4.7.0
+pyarrow==25.0.1
+seaborn==0.13.2
+
+# Part 7 only (Chronos foundation model) - install separately, run in an
+# environment with HuggingFace access (e.g. Google Colab), not required
+# for Parts 1-6/8:
+# chronos-forecasting
+# torch
