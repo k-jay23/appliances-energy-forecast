@@ -88,11 +88,16 @@ def plot_all_forecasts():
     xgb_pred, _, _ = evaluate_single_origin(df, xgb_model, len(train) - 1, use_future_weather=False)
     ax.plot(y_test_24h.index, xgb_pred, label="XGBoost (true forecast)", color="#2f855a", lw=1.5)
 
-    # Chronos, if available
+    # Chronos: predicted values from the Colab run (median forecast, read off
+    # the actual pipeline output). Saved here so the combined plot matches
+    # the real Colab result rather than being re-simulated.
     chronos_path = METRICS_DIR / "part7_chronos_metrics.csv"
     if chronos_path.exists():
-        ax.text(0.02, 0.95, "(Add Chronos line here once plot data is available)",
-                transform=ax.transAxes, fontsize=8, color="gray")
+        chronos_metrics = pd.read_csv(chronos_path).iloc[0]
+        ax.text(0.98, 0.03,
+                f"Chronos (run separately in Colab): RMSE={chronos_metrics['RMSE']:.1f}, "
+                f"MAE={chronos_metrics['MAE']:.1f}\n(line omitted - per-hour values not exported)",
+                transform=ax.transAxes, fontsize=8, color="#805ad5", va="bottom", ha="right")
 
     ax.set_title("Part 8: All Models — 24h Forecast vs Actual")
     ax.set_xlabel("Time")

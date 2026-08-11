@@ -65,9 +65,35 @@ once — to learn as robustly as a model purpose-built for seasonal time series.
 
 ### Q4. Does the foundation model outperform the simpler benchmark, SARIMAX, and feature-based models? Is the improvement, if any, large enough to justify the extra complexity?
 
-**PENDING** — awaiting Chronos results (run separately in Google Colab due to
-sandbox network restrictions on HuggingFace). Will complete once results are
-available.
+**No.** Chronos (`amazon/chronos-t5-small`, zero-shot, no training) scored
+**RMSE=305.2, MAE=215.1, MAPE=26.4%** on the single 24h test — worse than
+SARIMAX (159.6), both XGBoost variants (231–239), *and* even the simple
+Weekly Seasonal Naive benchmark (292.8) and Mean benchmark (300.0). It only
+beats Daily Seasonal Naive, Naive, and Drift.
+
+Looking at the forecast plot, Chronos produced a smooth, low-variance median
+forecast that tracked the general overnight-low / evening-rise shape but
+substantially **under-predicted the magnitude of both sharp peaks** in the
+test window — the actual series exceeds even the upper bound of its own 90%
+prediction interval near the end of the day. This is a sensible failure mode
+for a *general-purpose* pretrained model: Chronos was trained on a huge,
+diverse corpus of public time series and has never seen this specific
+house's occupant behaviour, so it defaults to a cautious, averaged-out
+prediction rather than the sharp, bursty spikes that are specific to this
+data (and which SARIMAX and XGBoost, both fit directly on this house's
+history, learned to anticipate).
+
+**Conclusion**: for this task — a single, well-established time series with
+4+ months of clean history — the extra complexity (and setup friction: this
+required Google Colab since the sandbox blocked HuggingFace, plus a ~185MB
+model download) is not justified. A zero-shot foundation model becomes more
+attractive in scenarios this project doesn't actually face: forecasting
+brand-new households with little to no history, or forecasting many series
+at once without wanting to fit/maintain a separate model per series. Only a
+single 24h evaluation was run for Chronos (not the full 14-day rolling
+check used for the other models), due to the practical friction of running
+it outside the main pipeline — a natural extension noted in the report's
+limitations section.
 
 ### Q5. Which variables would genuinely be known at the forecast origin? If you use future indoor temperature, humidity, or weather values from the test set, is this a true forecast or a conditional forecast?
 
@@ -93,22 +119,31 @@ forecasting those variables themselves.
 
 **SARIMAX(1,0,6)(1,1,1,24)** is the recommendation from current evidence:
 
-- **Accuracy**: best of everything tested (RMSE 328 rolling, 159.6 single-shot)
+- **Accuracy**: best of everything tested (RMSE 328 rolling, 159.6 single-shot) — including beating the Chronos foundation model (305.2), which actually finished behind two of the simple benchmarks
 - **Interpretability**: moderate — AR/MA coefficients are less intuitive
   than tree feature importances, but the seasonal structure is conceptually
   clear and residual diagnostics are easy to interpret
 - **Uncertainty**: provides native confidence intervals (with the
-  below-zero caveat noted in Q2)
+  below-zero caveat noted in Q2); Chronos also gives prediction intervals
+  natively, but its interval on the test window did not even contain the
+  actual peak values, which is a bigger practical uncertainty failure
 - **Computational cost**: SARIMAX's weak point — the grid search took a
   long time (147 fits) and each new forecast requires a refit (~50s in our
   tests); manageable for one household forecasting once a day, but doesn't
-  scale cheaply to many households at once
+  scale cheaply to many households at once. Chronos needs no training at
+  all, but does need a one-time ~185MB model download and GPU/CPU inference
+  capacity
 - **Ease of deployment**: straightforward, stable library, no GPU or
   complex feature pipeline required — unlike XGBoost, which needs a
-  lag/rolling-window feature pipeline maintained at inference time
+  lag/rolling-window feature pipeline maintained at inference time, or
+  Chronos, which needs a deep learning runtime (PyTorch) and, in our case,
+  couldn't even run inside the assignment's own compute environment due to
+  a network restriction on HuggingFace
 
 If deploying across many homes simultaneously (rather than one well-established
 house with 4+ months of history), the calculus would likely flip: a single
 XGBoost model amortizes its training cost across many households, and a
 zero-shot foundation model becomes attractive for brand-new homes with no
-history to fit a per-home SARIMAX on yet.
+history to fit a per-home SARIMAX on yet — though based on this project's
+results, its out-of-the-box accuracy would need to be weighed carefully
+against that convenience.
