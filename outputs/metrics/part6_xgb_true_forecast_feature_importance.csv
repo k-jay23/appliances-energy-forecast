@@ -1,0 +1,15 @@
+,0
+target_dow_cos,0.11932917
+target_lag24,0.11736004
+target_hour_cos,0.11207727
+target_hour_sin,0.10408839
+target_lag168,0.09680999
+rolling_mean_168,0.09455933
+target_dow_sin,0.08695899
+is_weekend,0.06326414
+rolling_std_24,0.06148488
+rolling_mean_24,0.05973116
+recent_lag_1,0.028851204
+recent_lag_24,0.022907007
+hours_ahead,0.01955315
+recent_lag_168,0.0130253825
