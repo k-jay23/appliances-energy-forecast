@@ -1,7 +1,7 @@
-# Part 9 — Discussion Questions (draft answers for the report)
+# Part 9 — Discussion Questions (answers for the report)
 
-*(Q4 is marked PENDING until Chronos results come back from Colab — everything
-else is grounded in the actual numbers produced by this project.)*
+*(All 6 questions answered, grounded in the actual results produced by this
+project — including the real Chronos numbers from the Colab run.)*
 
 ---
 
