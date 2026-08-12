@@ -91,33 +91,33 @@ children.push(
 // 1. Introduction
 children.push(h1("1. Introduction"));
 children.push(p(
-  "This report presents a case study in time-series forecasting: modelling household appliance electricity demand and producing a 24-hour-ahead forecast using a range of methods of increasing complexity. Four families of model are built and compared under identical evaluation conditions: naive statistical benchmarks, a seasonal autoregressive model (SARIMAX), a feature-based gradient-boosted tree model (XGBoost), and a pretrained time-series foundation model (Chronos). The aim is not only to find the most accurate model, but to critically examine whether additional model complexity is actually justified by the data."
+  "This report works through a fairly practical question: can appliance electricity use in a home be forecast 24 hours ahead, and does it actually pay off to use something more sophisticated than a simple rule of thumb? Four approaches were built and compared under the same test conditions: basic statistical benchmarks, a seasonal ARIMA model (SARIMAX), a gradient-boosted tree model (XGBoost) with engineered features, and a pretrained foundation model (Chronos) that needs no training at all. The results turned out to be more interesting than expected going in - the simplest classical model beat the more elaborate ones, which is worth digging into rather than glossing over."
 ));
 children.push(p(
-  "The dataset is the UCI \u201cAppliances Energy Prediction\u201d dataset (Candanedo, Feldheim & Deramaix, 2017): 10-minute readings of appliance energy use, together with indoor temperature/humidity from nine rooms and outdoor weather, collected over 4.5 months in a low-energy house in Belgium. The report follows the assignment structure: data preparation and exploratory analysis, stationarity testing, problem definition, benchmark modelling, SARIMAX, feature engineering and machine learning, a foundation model comparison, consolidated evaluation, critical discussion, limitations, and a final recommendation."
+  "The data comes from the UCI \u201cAppliances Energy Prediction\u201d dataset (Candanedo, Feldheim & Deramaix, 2017): 10-minute sensor readings from a low-energy house in Belgium, covering indoor temperature/humidity across nine rooms plus outdoor weather, over about 4.5 months. The rest of the report follows the structure of the assignment - data preparation, stationarity testing, defining the forecasting problem, the four modelling approaches in turn, a consolidated comparison, the six set discussion questions, limitations, and a final recommendation."
 ));
 
 // 2. Data & Preprocessing
 children.push(h1("2. Data and Preprocessing"));
 children.push(p(
-  "The raw dataset contains 19,735 readings at 10-minute resolution (11 Jan \u2013 27 May 2016) across 28 columns: the target variable Appliances (Wh), a secondary lights load, nine indoor temperature/humidity sensor pairs (T1\u2013T9, RH_1\u2013RH_9), six outdoor weather variables (T_out, RH_out, Press_mm_hg, Windspeed, Visibility, Tdewpoint), and two synthetic random-noise columns (rv1, rv2) that the original authors deliberately included as a control to test whether feature-selection methods correctly ignore uninformative variables. rv1/rv2 are excluded from every model built in this report, as they carry no real information by construction."
+  "The raw file has 19,735 readings taken every 10 minutes between 11 January and 27 May 2016, across 28 columns. The target is Appliances (Wh); there is also a secondary lights load, nine pairs of indoor temperature/humidity sensors (T1\u2013T9, RH_1\u2013RH_9), six outdoor weather variables (T_out, RH_out, Press_mm_hg, Windspeed, Visibility, Tdewpoint), and two columns of pure random noise (rv1, rv2) that the original authors added deliberately, as a check on whether feature-selection methods would correctly ignore them. rv1/rv2 were dropped from every model built here for the same reason - they are noise by construction, so there is nothing real to learn from them."
 ));
 children.push(p(
-  "The data required no missing-value treatment and had no irregular time gaps. For modelling, the series was resampled from 10-minute to hourly resolution (3,290 rows): the two energy columns (Appliances, lights) were summed, since Wh is an additive quantity, while all other sensor columns were averaged, since they are instantaneous readings."
+  "Missing values were not an issue at all, and neither were gaps in the timestamps - this dataset is unusually clean. For the actual modelling the series was resampled from 10-minute to hourly resolution (3,290 rows), summing the two energy columns since Wh is additive, and averaging everything else since those are instantaneous sensor readings rather than accumulating quantities."
 ));
 children.push(h2("Exploratory findings"));
 children.push(p(
-  "Hourly appliance use follows a clear daily rhythm \u2014 low overnight, rising from around 7am, and peaking near 18:00 \u2014 with a milder weekly pattern (Mondays, Fridays and Saturdays somewhat higher than mid-week). An STL decomposition (24-hour period) confirms a moderate seasonal component (seasonal strength \u2248 0.32 on a 0\u20131 scale); the residual is noisy and spiky, reflecting how bursty individual appliance usage is rather than a clean repeating signal."
+  "The hourly series has an obvious daily shape: quiet overnight, climbing from around 7am, peaking near 18:00, with a smaller weekly pattern layered on top (Mondays, Fridays and Saturdays run a bit higher than mid-week). An STL decomposition backs this up with a moderate seasonal strength (\u2248 0.32 on a 0\u20131 scale) - moderate rather than strong, because the residual is genuinely noisy. Appliance use is bursty by nature, not a clean repeating wave."
 ));
 children.push(...figure("02_daily_profile.png", 400, 200, "Figure 1. Average hourly appliance energy use by hour of day (\u00b11 std. dev.)."));
 
 // 3. Stationarity
 children.push(h1("3. Stationarity Analysis"));
 children.push(p(
-  "An Augmented Dickey-Fuller (ADF) test on the raw hourly series rejects the presence of a unit root decisively (ADF statistic = \u22129.13, p \u2248 3.1\u00d710\u207b\u00b9\u2075), meaning the series is already stationary in the classical sense: it is bounded and mean-reverting rather than drifting. First-order and 24-hour seasonal differencing were also tested and remain stationary, so no differencing is strictly required to satisfy the ADF criterion."
+  "Running an Augmented Dickey-Fuller test on the raw hourly series gives a clear result: no unit root (ADF statistic = \u22129.13, p \u2248 3.1\u00d710\u207b\u00b9\u2075), so the series is already stationary in the classical sense - it does not drift, it just oscillates around a fairly steady level. First-order and 24-hour seasonal differencing were tested too and stay stationary, meaning differencing is not technically required just to satisfy the ADF criterion."
 ));
 children.push(p(
-  "This is an important nuance: the ADF test checks only for a unit root, not for seasonality. The ACF/PACF of the raw series show significant correlation at lag 24 (and its multiples, 48 and 72), and after 24-hour seasonal differencing there is a sharp, significant negative spike at lag 24 in both the ACF and PACF \u2014 the textbook signature of a seasonal AR(1)/MA(1) structure at s=24. This evidence directly informed the seasonal order used for SARIMAX in Section 6."
+  "That is a bit of a trap though, because ADF only checks for a unit root, not for seasonality. Looking at the ACF/PACF, there is clear correlation at lag 24 (and its multiples, 48 and 72), and once the series is seasonally differenced at 24h, a sharp negative spike shows up at lag 24 in both plots - the classic signature of a seasonal AR(1)/MA(1) term at s=24. That evidence fed directly into the SARIMAX specification used in Section 6."
 ));
 children.push(...figure("07_acf_pacf_seasonal_diff.png", 440, 264, "Figure 2. ACF and PACF after 24-hour seasonal differencing, showing the significant lag-24 spike."));
 
@@ -127,14 +127,14 @@ children.push(p([bold("Target variable: "), new TextRun("Appliances \u2014 hourl
 children.push(p([bold("Forecast horizon: "), new TextRun("24 hours ahead.")]));
 children.push(p([bold("Train/test split: "), new TextRun("the final 14 days (336 hours) are held out as a test set never seen during training; the preceding 2,954 hours form the training set.")]));
 children.push(p([bold("Evaluation design: "), new TextRun(
-  "every model is scored two ways \u2014 (i) a single 24-hour-ahead forecast made immediately at the end of training (the literal requirement in the assignment brief), and (ii) a more robust 14-day rolling evaluation, in which the 24-hour forecast is repeated across all 14 held-out days (refitting/re-forecasting with an expanding history each time) and the resulting errors averaged. The rolling check was added because a single day can be an unrepresentative sample \u2014 this was confirmed directly in Section 5, where the benchmark ranking changed materially between the two evaluation regimes."
+  "every model is scored two ways. First, a single 24-hour forecast made right at the end of training - this is literally what the brief asks for. Second, a more thorough 14-day rolling check, where that same 24-hour forecast is repeated across all 14 held-out days and averaged. The second check was added after the single-day benchmark numbers (Section 5) turned out to be a bit misleading - one day is not really a reliable enough sample to judge a model on."
 )]));
 children.push(p([bold("Metrics: "), new TextRun("RMSE (primary), MAE, and MAPE.")]));
 
 // 5. Benchmarks
 children.push(h1("5. Benchmark Models"));
 children.push(p(
-  "Five standard benchmark forecasts were implemented: Mean (overall training average), Naive (last observed value repeated), Daily Seasonal Naive (same hour yesterday), Weekly Seasonal Naive (same hour, same day last week), and Drift (naive plus a linear trend extrapolated across the training set)."
+  "Five standard baseline forecasts were implemented: Mean (the overall training average), Naive (repeat the last observed value), Daily Seasonal Naive (copy the same hour yesterday), Weekly Seasonal Naive (copy the same hour, same day, last week), and Drift (naive plus a straight-line trend extrapolated across the whole training set)."
 ));
 children.push(dataTable(
   ["Model", "RMSE (single)", "MAE (single)", "RMSE (rolling)", "MAE (rolling)"],
@@ -148,20 +148,20 @@ children.push(dataTable(
   [2400, 1740, 1740, 1740, 1740]
 ));
 children.push(p(
-  "On the single-day test, Weekly Seasonal Naive appears strongest, while Naive and Drift collapse \u2014 both anchor on the final training value, which happened to be an evening peak, so they predict \u201chigh forever.\u201d The rolling 14-day check tells a fairer story: Mean and Weekly Seasonal Naive are roughly tied as the strongest simple benchmarks, Daily Seasonal Naive under-performs both despite the clear average daily shape seen in Figure 1, and Naive/Drift remain far worse. This indicates the series has a real average daily/weekly rhythm but no persistent short-term momentum \u2014 consistent with the stationarity finding in Section 3 \u2014 and that the exact timing of usage on any given day is too noisy for \u201ccopy yesterday exactly\u201d to be reliable.",
+  "The single-day test made Weekly Seasonal Naive look best, while Naive and Drift basically fell apart - both anchor on the final training value, and that value happened to sit right at an evening peak, so they predicted \u201chigh, forever.\u201d Not entirely fair on them. The rolling 14-day check is a lot more balanced: Mean and Weekly Seasonal Naive end up roughly tied for strongest among the simple benchmarks, Daily Seasonal Naive lags behind both despite the clear average shape seen in Figure 1, and Naive/Drift stay well behind everything else. Put together, this says appliance use has a genuine average daily/weekly rhythm but no persistent short-term momentum (consistent with the stationarity result in Section 3), and that the exact timing of usage on any given day is too noisy for \u201cjust copy yesterday\u201d to hold up reliably.",
   { spacing: { after: 140, line: 264 } }
 ));
 
 // 6. SARIMAX
 children.push(h1("6. SARIMAX Model"));
 children.push(p(
-  "A SARIMA(p,d,q)(P,D,Q,24) model was fitted using statsmodels. Following the assignment specification, the non-seasonal orders were grid-searched exhaustively over p\u2208[0,6], d\u2208[0,2], q\u2208[0,6] (147 combinations), selecting by AIC. The seasonal order was fixed at (1,1,1,24) rather than also grid-searched: the Section 3 diagnostics (a clean seasonal AR/MA signature at lag 24) justified this choice, and grid-searching seasonal terms as well would have multiplied an already large search space beyond what was computationally tractable on the available single-core hardware (individual high-order fits took up to \u224840 seconds)."
+  "A SARIMA(p,d,q)(P,D,Q,24) model was fitted using statsmodels. Per the assignment spec, the non-seasonal orders were grid-searched exhaustively (p 0\u20136, d 0\u20132, q 0\u20136, 147 combinations total), selecting by AIC. The seasonal part was fixed at (1,1,1,24) rather than also searched: Section 3 already gave a fairly clean seasonal signature at lag 24, and searching the seasonal terms as well would have pushed the search space well past what was practical to run (some of the higher-order fits already took close to 40 seconds each on the hardware available)."
 ));
 children.push(p(
-  "To keep the full 147-model search tractable, it was run on the most recent 45 days of the training set rather than the full 2,954-hour history; the winning order was then refit on the complete training set for the actual forecast. The best model by AIC was SARIMA(1,0,6)(1,1,1,24) (AIC = 14872.0 on the search subset), which converged cleanly. It is worth noting as a limitation that 90 of the 147 grid combinations did not fully converge within the reduced iteration cap (50) used to keep the search fast \u2014 though the selected winner was not among them."
+  "To keep 147 fits actually finishable, the search was run on just the last 45 days of training data rather than the full 2,954 hours, with the winning order then refit on the complete training set for the real forecast. The winner by AIC was SARIMA(1,0,6)(1,1,1,24) (AIC = 14872.0 on the search subset), which converged cleanly. Worth flagging: 90 of the 147 combinations did not fully converge within the reduced iteration cap used to keep the search fast - the winning model was not one of them, but a slower, fuller search might turn up something marginally better."
 ));
 children.push(p(
-  "Refit on the full training set, residual diagnostics show no significant remaining autocorrelation (Figure 3, left), indicating the seasonal/autoregressive structure adequately captures the daily cycle and short-run dependence. The residual distribution (Figure 3, right) is right-skewed (skew = 1.84) with heavy tails (kurtosis = 8.16) and a near-zero mean (\u22122.5 Wh), consistent with the bursty, spiky nature of appliance usage \u2014 the model tracks the general level well but under-predicts occasional large spikes."
+  "Refitting on the full training set, the residual ACF (Figure 3, left) shows nothing significant left over, suggesting the seasonal/AR structure is doing its job capturing the daily cycle and short-run dependence. The residual distribution (right) is right-skewed (skew = 1.84) with heavy tails (kurtosis = 8.16) and a near-zero mean (\u22122.5 Wh), which fits the bursty nature of the data - the model tracks the general level well but tends to under-predict the occasional big spike."
 ));
 children.push(...figure("10_sarimax_residual_diagnostics.png", 540, 180, "Figure 3. SARIMAX residual ACF (left) and residual distribution (right)."));
 children.push(dataTable(
@@ -170,17 +170,17 @@ children.push(dataTable(
   [3960, 1800, 1800, 1800]
 ));
 children.push(p(
-  "SARIMAX clearly improves on the strongest benchmark on both evaluation regimes \u2014 a \u224816% RMSE reduction on the robust rolling check (328.1 vs. 391.2) and a much larger margin on the single-day test. One genuine limitation: the 95% forecast interval dips below zero at points, which is physically impossible for energy use \u2014 a known weakness of Gaussian-based SARIMAX intervals applied to skewed, non-negative data.",
+  "SARIMAX beats the best benchmark clearly on both evaluations - about a 16% RMSE improvement on the rolling check (328.1 vs. 391.2) and an even bigger gap on the single-day test. One honest limitation worth naming: the 95% interval dips below zero in places, which obviously cannot happen for real energy use - a known issue with Gaussian confidence intervals applied to skewed, non-negative data.",
   { spacing: { after: 140, line: 264 } }
 ));
 
 // 7. Feature-based ML
 children.push(h1("7. Feature-Based Machine Learning Model: XGBoost"));
 children.push(p(
-  "A feature-based model was built using a \u201cdirect multi-horizon\u201d design: one training row per (origin, hours-ahead) pair, covering hours-ahead = 1\u201324, so a single model learns to forecast any point in the next day. Features are restricted to what is genuinely knowable at the forecast origin: cyclically-encoded hour-of-day and day-of-week of the target time, a weekend flag, lagged Appliances values (1h, 24h and 168h relative to the origin), rolling mean/std (24h and 168h), and lag values measured relative to the specific target hour (24h and 168h before it \u2014 always valid within a 24-hour horizon)."
+  "For the feature-based model, a \u201cdirect multi-horizon\u201d design was used: one training row per (origin, hours-ahead) pair, covering hours-ahead = 1\u201324, so a single model can predict any point across the next day rather than needing 24 separate models. The features are restricted to what would genuinely be known standing at the forecast origin: cyclically-encoded hour-of-day and day-of-week for the target time, a weekend flag, lagged Appliances values (1h/24h/168h relative to the origin), rolling mean and std (24h/168h), plus lags measured relative to the specific target hour itself (24h/168h before it, which stays valid across the whole 24-hour horizon)."
 ));
 children.push(p(
-  "Two feature sets were compared to directly test the effect of exogenous covariates. The \u201ctrue-forecast\u201d set (17 features) uses only the features above. The \u201cconditional\u201d set (41 features) additionally includes the actual indoor (T1\u2013T9, RH_1\u2013RH_9) and outdoor weather readings at the target time \u2014 real historical values that would not actually be known in advance in a live deployment (see Section 10, Question 5). Both were trained as XGBoost regressors (400 trees, max depth 5, learning rate 0.05) on 66,288 rows drawn only from the training period."
+  "Two versions of this feature set were built to directly test what exogenous covariates actually add. The \u201ctrue-forecast\u201d version (17 features) only uses what is described above. The \u201cconditional\u201d version (41 features) also includes the real indoor (T1\u2013T9, RH_1\u2013RH_9) and outdoor weather readings at the target time - which is something of a cheat, since a live system would not actually know tomorrow\u2019s exact indoor temperature (more on this under Question 5). Both were trained as XGBoost regressors (400 trees, depth 5, learning rate 0.05) on 66,288 rows, using training-period data only."
 ));
 children.push(dataTable(
   ["Model variant", "RMSE (single)", "MAE (single)", "RMSE (rolling)", "MAE (rolling)"],
@@ -188,28 +188,28 @@ children.push(dataTable(
   [3160, 1550, 1550, 1550, 1550]
 ));
 children.push(p(
-  "Feature importance (Figure 4) shows the true-forecast model relies overwhelmingly on cyclic day-of-week/hour-of-day encodings and the 24h/168h lag and rolling-mean features \u2014 seasonal and recency structure dominate. Strikingly, the conditional model, despite having access to real future weather and indoor sensor readings, did not outperform the honest model on the robust rolling check (379.3 vs. 373.0 RMSE) \u2014 these variables appear to add noise rather than genuine signal for this specific target, echoing the original dataset paper\u2019s own finding that weather contributes relatively little to predicting appliance-specific (as opposed to heating) energy use. Neither XGBoost variant outperformed SARIMAX on the fair rolling comparison (373\u2013379 vs. 328), despite substantially greater model and pipeline complexity \u2014 discussed further in Section 10."
+  "Feature importance (Figure 4) shows the honest model leans almost entirely on the cyclic day-of-week/hour-of-day encodings plus the 24h/168h lag and rolling-mean features - seasonal and recency structure dominate everything else. What is a little surprising is that the conditional model, even with access to the real future weather and indoor readings, did not actually do better on the rolling check (379.3 vs. 373.0 - if anything, slightly worse). That lines up with the original dataset paper\u2019s own finding: weather does not carry much independent signal for appliance-specific energy use, as opposed to heating load. Neither XGBoost variant beat SARIMAX on the fair rolling comparison either (373\u2013379 vs. 328), despite being considerably more complex to build - discussed further in Section 10."
 ));
 children.push(...figure("13_xgb_true_forecast_feature_importance.png", 400, 200, "Figure 4. Top 15 feature importances, XGBoost (true-forecast variant)."));
 
 // 8. Foundation model
 children.push(h1("8. Foundation Model: Chronos"));
 children.push(p(
-  "Chronos (amazon/chronos-t5-small; Ansari et al., 2024) is a pretrained transformer for zero-shot time-series forecasting: it requires no training on the target series, only a window of recent history (\u201ccontext\u201d). The model was given the last 336 hours (14 days) of training data as context and asked for a 24-hour probabilistic forecast (100 sampled trajectories; median taken as the point forecast, 5th\u201395th percentile as a 90% interval)."
+  "Chronos (amazon/chronos-t5-small; Ansari et al., 2024) is a pretrained transformer built for zero-shot forecasting: no training on the target series required, just a window of recent history (\u201ccontext\u201d) fed in directly. The model was given the last 336 hours (14 days) of training data as context and asked for a 24-hour probabilistic forecast (100 sampled trajectories, median taken as the point forecast, 5th\u201395th percentile as a 90% interval)."
 ));
 children.push(p(
-  "Chronos required a separate execution environment (Google Colab) since the sandbox used for the rest of this project blocks the HuggingFace network domain that hosts its pretrained weights; only the single 24-hour evaluation was therefore run, not the 14-day rolling check used for the other models."
+  "This one could not run in the same place as everything else - the sandbox used for the rest of this project blocks the HuggingFace domain the pretrained weights are hosted on, so it had to be run separately in Google Colab. Because of that extra friction, only the single 24-hour evaluation was carried out, not the 14-day rolling check used for the other models."
 ));
 children.push(dataTable(["Evaluation", "RMSE", "MAE", "MAPE %"], [["Single 24h forecast", "305.2", "215.1", "26.4"]], [3960, 1800, 1800, 1800]));
 children.push(...figure("14_chronos_forecast.png", 440, 198, "Figure 5. Chronos 24-hour forecast (median and 90% interval) vs. actual."));
 children.push(p(
-  "As Figure 5 shows, Chronos produces a smooth, damped forecast that tracks the broad overnight-low/evening-rise shape but substantially under-predicts the magnitude of both sharp peaks \u2014 actual usage exceeds even the top of its own 90% interval late in the day. This is a sensible failure mode for a general-purpose, zero-shot model that has never seen this specific house\u2019s idiosyncratic behaviour; it defaults to a cautious, averaged prediction. Its accuracy lands close to the Mean and Weekly Seasonal Naive benchmarks and clearly behind both SARIMAX and XGBoost.",
+  "Figure 5 shows what happened: Chronos produces a smooth, cautious forecast that gets the broad overnight-low/evening-rise shape roughly right but badly underestimates the size of both sharp peaks - actual usage goes above even the top of its own 90% interval late in the day. That is a fairly understandable failure mode for a general-purpose zero-shot model that has never seen this specific house before; it defaults to a safe, averaged-out guess rather than committing to a spike. Accuracy-wise it lands close to the Mean and Weekly Seasonal Naive benchmarks, clearly behind both SARIMAX and XGBoost.",
   { spacing: { after: 140, line: 264 } }
 ));
 
 // 9. Comparison
 children.push(h1("9. Consolidated Model Comparison"));
-children.push(p("Table 3 and Figure 6 bring every model onto the same footing."));
+children.push(p("Table 3 and Figure 6 put every model on the same footing so they can be compared directly."));
 children.push(dataTable(
   ["Model", "RMSE (single)", "RMSE (rolling)", "MAE (rolling)", "MAPE % (rolling)"],
   [
@@ -228,7 +228,7 @@ children.push(dataTable(
 children.push(p("*Chronos was evaluated only on the single 24h test (see Section 8 and Limitations).", { children: [ital("*Chronos was evaluated only on the single 24h test (see Section 8 and Limitations).")], spacing: { after: 200, line: 260 } }));
 children.push(...figure("15_all_models_comparison.png", 530, 265, "Figure 6. Actual vs. forecast for the best benchmark, SARIMAX, and XGBoost, on the single 24h test window."));
 children.push(p(
-  "SARIMAX is the clear winner on both evaluation regimes. XGBoost, despite far greater complexity, does not surpass it here; the foundation model, despite requiring zero training, is competitive only with the simplest benchmarks."
+  "SARIMAX wins outright on both evaluation regimes. XGBoost, despite being considerably more complex to build, does not manage to beat it here, and the foundation model - despite needing no training at all - only really keeps pace with the simplest benchmarks."
 ));
 
 // 10. Discussion
@@ -236,50 +236,50 @@ children.push(h1("10. Critical Discussion"));
 
 children.push(h2("Q1. Which benchmark model is strongest, and what does this tell you about the structure of appliance energy use?"));
 children.push(p(
-  "On the single-day test Weekly Seasonal Naive appeared strongest, but that result depended on an unrepresentative final training hour, which caused Naive and Drift to collapse. The fairer rolling check shows Mean and Weekly Seasonal Naive are roughly tied as strongest, with Daily Seasonal Naive clearly worse. This shows appliance use has a real average daily/weekly rhythm, but the exact timing of usage on any given day is too noisy for \u201ccopy yesterday exactly\u201d to work reliably \u2014 and the very poor showing of Naive/Drift confirms the series has no persistent short-term momentum (Section 3)."
+  "The single-day test made Weekly Seasonal Naive look best, but that was mostly luck of the draw - training happened to end right on an unrepresentative hour, which is exactly why Naive and Drift cratered. Once the rolling check is used instead, Mean and Weekly Seasonal Naive come out roughly tied for strongest, with Daily Seasonal Naive clearly behind both. What this says: appliance use has a genuine average daily/weekly rhythm, but the exact timing on any specific day is too noisy for \u201ccopy yesterday exactly\u201d to be dependable, and the very poor showing of Naive/Drift confirms there is no real short-term momentum in the series either (ties back to Section 3)."
 ));
 
 children.push(h2("Q2. Does SARIMAX improve on the strongest benchmark? Are daily seasonality, autocorrelation, and exogenous variables adequately captured?"));
 children.push(p(
-  "Yes, clearly: a \u224816% RMSE reduction on the rolling check (328.1 vs. 391.2) and a much larger margin on the single-day test. The residual ACF shows no significant leftover autocorrelation, so the seasonal AR/MA structure adequately captures daily seasonality and short-run dependence. No exogenous variables were included in this SARIMAX (that was deliberately reserved for the feature-based model); given how little weather/indoor sensor data helped XGBoost (Q3), it is plausible an exogenous SARIMAX would add limited further benefit, though this was not directly tested."
+  "Yes, by a decent margin - about 16% lower RMSE on the rolling check (328.1 vs. 391.2), and an even bigger gap on the single-day test. The residual ACF came back clean, no significant autocorrelation left over, so the seasonal AR/MA structure is capturing daily seasonality and short-run dependence reasonably well. No exogenous variables were included in this SARIMAX - that was deliberately left for the feature-based model instead. Given how little the weather/indoor sensor data ended up helping XGBoost (see Q3), an exogenous SARIMAX probably would not add a huge amount either, though this was not directly tested."
 ));
 
 children.push(h2("Q3. Does XGBoost improve when lag, rolling-window, time-of-day, and sensor/weather variables are added? Which feature groups are most useful?"));
 children.push(p(
-  "Time-of-day and day-of-week encodings, plus the 24h/168h lag and rolling-mean features, dominate feature importance. Adding real future weather/indoor sensor readings (the conditional variant) did not improve the robust rolling score (379.3 vs. 373.0 \u2014 slightly worse), despite using information the honest model did not have. This indicates weather/indoor readings carry little independent predictive value here beyond time-of-day and lag structure. Neither XGBoost variant beat SARIMAX on the rolling evaluation, suggesting SARIMAX\u2019s seasonal ARIMA structure suits this particular series better than a generic tree-based regressor, and/or that \u2248115 days of training history is limited for a single global model covering all 24 forecast horizons at once."
+  "The feature importance plot makes this fairly clear: time-of-day and day-of-week encodings, plus the 24h/168h lag and rolling-mean features, dominate everything else by a wide margin. Adding the real future weather/indoor sensor readings (the conditional variant) did not improve the rolling score at all - it actually came in slightly worse (379.3 vs. 373.0), even with information the honest model never had access to. So weather/indoor readings do not seem to carry much independent value here beyond what time-of-day and lag structure already capture. Neither version of XGBoost beat SARIMAX on the fair comparison either, which suggests SARIMAX\u2019s seasonal structure is simply a better fit for this kind of series than a generic tree-based regressor, and/or that \u2248115 days of training history is not quite enough for one global model to learn all 24 forecast horizons well at once."
 ));
 
 children.push(h2("Q4. Does the foundation model outperform the simpler benchmark, SARIMAX, and feature-based models? Is any improvement large enough to justify the extra complexity?"));
 children.push(p(
-  "No. Chronos (RMSE 305.2 on the single 24h test) is worse than SARIMAX (159.6) and both XGBoost variants (231\u2013239), and only roughly matches the Mean benchmark (300.0). It visibly missed the sharp evening peak in the test window, defaulting to a damped, cautious trajectory \u2014 expected behaviour for a model with zero exposure to this specific house\u2019s history. For a single, well-established series with 4+ months of dedicated data, the extra complexity (and, in this project, the added friction of a separate execution environment) is not justified on accuracy grounds. A zero-shot foundation model would be more attractive in a cold-start scenario \u2014 a brand-new home with no history to fit a per-home SARIMAX or XGBoost model on yet \u2014 where instant forecasting without training is worth more than peak accuracy."
+  "No, not close. Chronos scored 305.2 RMSE on the single 24h test - worse than SARIMAX (159.6) and both XGBoost variants (231\u2013239), and only about level with the plain Mean benchmark (300.0). Looking at the forecast plot, it visibly missed the sharp evening peak and defaulted to a smooth, cautious prediction, which makes sense for a model that has never seen this particular house\u2019s history before. For a single, well-established series with 4+ months of clean data behind it, the extra complexity - and, in this project, the extra hassle of needing a separate Colab environment just to run it - is not worth it on accuracy grounds. Where a foundation model like this would actually earn its keep is a cold-start situation: a brand-new home with no history yet to fit a per-home SARIMAX or XGBoost on, where getting an instant forecast without any training matters more than squeezing out the best possible accuracy."
 ));
 
 children.push(h2("Q5. Which variables are genuinely known at the forecast origin? Is using future weather/indoor values from the test set a true or conditional forecast?"));
 children.push(p(
-  "Genuinely knowable at the forecast origin: all past/lagged Appliances values, and purely calendar-based features (hour-of-day, day-of-week), since calendars are known in advance. Not genuinely knowable: actual future indoor temperature/humidity (depends on future weather, heating decisions and occupancy) or actual future outdoor weather \u2014 in production these would require an external weather forecast, itself imperfect, rather than ground-truth values. The \u201cconditional\u201d XGBoost model, which used real realised future readings from the test set, is therefore not a true forecast but a conditional/hindsight estimate that overstates what is actually achievable in production. Notably (Q3), this hindsight information did not even help here \u2014 but the leakage risk is real and must be flagged whenever exogenous variables are used without first forecasting those variables themselves."
+  "Genuinely knowable at the forecast origin: all past Appliances values, and anything purely calendar-based (hour-of-day, day-of-week), since the calendar is always known in advance. Not genuinely knowable: the actual future indoor temperature/humidity (depends on future weather, heating decisions, and occupancy) or the actual future outdoor weather - in a real system this would require an external weather forecast, which comes with its own error, rather than the ground-truth values used here from the test set. So the \u201cconditional\u201d XGBoost model, which used the real realised future readings, is not a genuine forecast - it is closer to a hindsight estimate that overstates what could actually be achieved live. Interestingly (see Q3), that hindsight information did not even help in this case, but the leakage risk is real regardless, and it is worth flagging any time exogenous variables are used without also forecasting those variables themselves."
 ));
 
 children.push(h2("Q6. Considering accuracy, interpretability, uncertainty, computational cost, and ease of deployment, which model would you recommend, and why?"));
 children.push(p(
-  "SARIMAX(1,0,6)(1,1,1,24) is recommended for this use case. It is the most accurate model tested on both evaluation regimes; it provides native confidence intervals (with the below-zero caveat noted in Section 6); its seasonal ARIMA structure and clean residual diagnostics are reasonably interpretable; and it deploys with a stable, well-documented library and no complex feature pipeline. Its main weakness is computational cost \u2014 the full grid search and each rolling refit (\u224850 seconds per fit) are non-trivial, though entirely manageable for a single household forecasting once a day. If the goal instead were forecasting many households simultaneously, or households with little history, the recommendation would likely shift: a single XGBoost model amortises training cost across many series, and a zero-shot foundation model becomes attractive precisely where no per-household history yet exists to fit SARIMAX or XGBoost on."
+  "SARIMAX(1,0,6)(1,1,1,24) is the recommendation here. It is the most accurate model across both evaluations by a clear margin, it provides native confidence intervals (with the below-zero caveat noted in Section 6), the seasonal structure and clean residual diagnostics make it reasonably interpretable, and it deploys with a stable, well-documented library without needing a complicated feature pipeline. Its real weakness is computational cost - the grid search and each rolling refit (\u224850 seconds per fit) add up, though that is entirely manageable for forecasting a single household once a day. If the goal changed to forecasting many households at once, or households with barely any history, the recommendation would likely shift: a single XGBoost model can be trained once and reused across many series, and a zero-shot foundation model becomes genuinely useful exactly where there is no per-household history yet to fit anything else on."
 ));
 
 // 11. Limitations
 children.push(h1("11. Limitations and Future Work"));
-children.push(bullet("The SARIMAX grid search used a reduced 45-day window and a capped iteration limit for computational tractability; 90 of 147 combinations did not fully converge (the selected winner was unaffected, but a fuller search could plausibly find a better model)."));
-children.push(bullet("No exogenous SARIMAX variant was tested; combining SARIMAX\u2019s seasonal structure with selected covariates is a natural extension."));
-children.push(bullet("The XGBoost model is a single global model covering all 24 forecast horizons at once (a \u201cdirect\u201d approach); a per-horizon ensemble or a recursive strategy might improve near-term accuracy."));
-children.push(bullet("Chronos was evaluated only on a single 24-hour window, not the 14-day rolling check used elsewhere, and only the \u201csmall\u201d model variant was tried, not \u201cbase\u201d/\u201clarge\u201d or a fine-tuned version."));
-children.push(bullet("The analysis covers a single house over one 4.5-month period; findings (e.g. the limited value of weather features) may not generalise to other homes, climates, or seasons with heavier heating/cooling load."));
+children.push(bullet("The SARIMAX grid search ran on a reduced 45-day window with a capped iteration limit, just to keep runtime manageable; 90 of the 147 combinations did not fully converge as a result (the winning model was unaffected, but a slower, fuller search might turn up something marginally better)."));
+children.push(bullet("An exogenous SARIMAX variant was not tested; combining the seasonal ARIMA structure with a few selected covariates would be a natural next step."));
+children.push(bullet("The XGBoost model is a single global model covering all 24 forecast horizons at once (the \u201cdirect\u201d approach) rather than 24 separate specialised models; a per-horizon ensemble might do better closer to the forecast origin."));
+children.push(bullet("Chronos was only evaluated on the single 24-hour window, not the full rolling check the other models got, and only the \u201csmall\u201d model size was tried, not \u201cbase\u201d/\u201clarge\u201d or a fine-tuned version."));
+children.push(bullet("This is all based on one house over one 4.5-month stretch, so findings such as the limited value of weather features might not hold up in a different climate, season, or household."));
 children.push(p(
-  "Future work could test exogenous SARIMAX, a per-horizon or recursive XGBoost strategy, a fine-tuned or larger Chronos model, a bounded/log-transformed model to avoid physically-impossible negative forecast intervals, and validation across multiple households.",
+  "Some obvious next steps: an exogenous SARIMAX, a per-horizon or recursive XGBoost setup, a larger or fine-tuned Chronos model, a bounded/log-transformed model to fix the negative-interval issue, and validation across more than one household.",
   { spacing: { after: 140, line: 264 } }
 ));
 
 // 12. Conclusion
 children.push(h1("12. Conclusion and Recommendation"));
 children.push(p(
-  "Across benchmark, statistical, machine-learning, and foundation-model approaches, SARIMAX(1,0,6)(1,1,1,24) produced the most accurate 24-hour-ahead forecasts of household appliance energy use, improving on the strongest benchmark by \u224816% RMSE and outperforming a substantially more complex feature-based XGBoost model. The zero-shot Chronos foundation model, while requiring no training, was only competitive with the simplest benchmarks and is best suited to cold-start scenarios rather than a single, data-rich series like this one. For this specific forecasting task \u2014 a single well-established household with several months of clean history \u2014 SARIMAX is the recommended model, balancing strong accuracy with manageable computational cost and straightforward deployment."
+  "Across benchmarks, SARIMAX, XGBoost, and Chronos, SARIMAX(1,0,6)(1,1,1,24) came out as the most accurate model for forecasting 24 hours of household appliance energy use, beating the best benchmark by \u224816% RMSE and outperforming a considerably more complex XGBoost setup. The zero-shot Chronos model, while requiring no training at all, only kept pace with the simplest benchmarks and seems better suited to genuine cold-start scenarios than to a data-rich single series like this one. For this specific task - one well-established household with several clean months of history behind it - SARIMAX is the model recommended here: the most accurate option on the evidence gathered, reasonably interpretable, and straightforward enough to deploy without a complicated pipeline."
 ));
 
 // References
