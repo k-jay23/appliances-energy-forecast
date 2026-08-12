@@ -1,11 +1,11 @@
 """
-data_prep.py
-------------
-Part 1: Load the raw Appliances Energy Prediction dataset, parse timestamps,
-check for missing values, and resample from 10-minute to hourly resolution.
+Part 1 - loading and cleaning the raw dataset.
 
-Source data: UCI Appliances Energy Prediction dataset (Candanedo et al., 2017),
-downloaded from the original authors' repository (mirror of the UCI archive file).
+Just reads the UCI Appliances Energy Prediction csv, parses the timestamps,
+and bins it up to hourly since the raw data is every 10 mins which is way
+too fine-grained for what we need. Checked it for missing values / gaps too,
+turns out this dataset is basically spotless (no NaNs, no missing timestamps)
+which made this part easy.
 """
 
 import pandas as pd
@@ -17,7 +17,8 @@ PROCESSED_DIR = Path(__file__).resolve().parents[1] / "data" / "processed"
 
 
 def load_raw(path: Path = RAW_PATH) -> pd.DataFrame:
-    """Load the raw 10-minute resolution CSV and parse the timestamp column."""
+    # date column comes in as a string by default, need it as an actual
+    # datetime so we can resample later
     df = pd.read_csv(path)
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date").set_index("date")
@@ -25,12 +26,12 @@ def load_raw(path: Path = RAW_PATH) -> pd.DataFrame:
 
 
 def check_missing(df: pd.DataFrame) -> pd.Series:
-    """Return count of missing values per column (0 expected for this dataset)."""
+    # sanity check, should be all zeros for this dataset
     return df.isna().sum()
 
 
 def check_time_regularity(df: pd.DataFrame) -> dict:
-    """Check that timestamps are evenly spaced at 10-minute intervals."""
+    """Make sure there aren't any gaps in the 10-min readings before we resample."""
     diffs = df.index.to_series().diff().dropna()
     expected = pd.Timedelta(minutes=10)
     n_gaps = (diffs != expected).sum()
@@ -46,14 +47,10 @@ def check_time_regularity(df: pd.DataFrame) -> dict:
 
 
 def resample_hourly(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Resample from 10-minute to hourly resolution.
-
-    Appliances and lights (energy, Wh per 10-min reading) are SUMMED to give
-    total Wh consumed in each hour. All other sensor/weather columns are
-    AVERAGED, since they are instantaneous readings (temperature, humidity,
-    pressure, etc.), not additive quantities.
-    """
+    # Appliances/lights are Wh readings so they need to be SUMMED across the
+    # hour (adding up energy used makes sense). Everything else (temp,
+    # humidity, pressure etc) is an instantaneous reading so averaging is
+    # the right call there - you can't "sum" a temperature.
     energy_cols = ["Appliances", "lights"]
     other_cols = [c for c in df.columns if c not in energy_cols]
 
@@ -61,7 +58,7 @@ def resample_hourly(df: pd.DataFrame) -> pd.DataFrame:
     hourly_other = df[other_cols].resample("h").mean()
 
     hourly = pd.concat([hourly_energy, hourly_other], axis=1)
-    hourly = hourly[df.columns]  # preserve original column order
+    hourly = hourly[df.columns]  # keep the same column order as original
     return hourly
 
 
@@ -70,6 +67,7 @@ def run(save: bool = True) -> pd.DataFrame:
     missing = check_missing(df_raw)
     regularity = check_time_regularity(df_raw)
 
+    # just printing everything out so I can eyeball it looks right
     print("=== Raw data summary ===")
     print(f"Shape: {df_raw.shape}")
     print(f"Date range: {regularity['start']} -> {regularity['end']}")

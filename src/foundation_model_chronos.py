@@ -1,27 +1,19 @@
 """
-foundation_model_chronos.py
------------------------------
-Part 7: Zero-shot forecast using Amazon's "Chronos" time-series foundation
-model. Chronos is pretrained on a huge collection of public time series and
-can forecast a NEW series (ours) with no training at all - you just give it
-recent history ("context") and ask for a forecast.
+Part 7 - Chronos foundation model. Zero-shot forecasting, meaning no
+training on our data at all, just feed it recent history and it predicts
+forward based on patterns it picked up from a huge pile of other time
+series during pretraining.
 
-*** RUN THIS IN GOOGLE COLAB, NOT IN THE PROJECT SANDBOX ***
-(The sandbox used for the rest of this project blocks HuggingFace, which is
-where the pretrained Chronos weights are hosted, so this script cannot run
-there. Colab has normal internet access.)
+Couldn't run this one in the same place as everything else - my main
+environment blocks HuggingFace (that's where the pretrained weights live),
+so I had to run this separately in Google Colab instead. Kind of annoying
+but it only took a few minutes:
 
-HOW TO RUN IN COLAB (5 minutes, no file uploads needed):
-1. Go to https://colab.research.google.com , click "New notebook".
-2. In the FIRST cell, paste and run just this line:
-   !pip install -q chronos-forecasting torch pandas matplotlib
-3. In a SECOND cell, paste everything below from "import pandas" onwards, and run it.
-   (It downloads the dataset itself and does the resampling, so no upload needed.)
-4. It will print something like:
-   Chronos 24h-ahead forecast: RMSE=xxx.xx  MAE=xxx.xx  MAPE%=xx.xx
-   Copy that line and paste it back to me, along with a description of the
-   plot if you'd like (or download 14_chronos_forecast.png from the file
-   panel on the left and share it).
+1. colab.research.google.com -> new notebook
+2. cell 1: !pip install -q chronos-forecasting torch pandas matplotlib
+3. cell 2: paste everything below (from "import pandas" down) and run it.
+   Grabs the data itself off github so no need to upload anything.
+4. prints RMSE/MAE/MAPE at the end - that's what went into the report.
 """
 
 # !pip install -q chronos-forecasting torch pandas matplotlib   # run this in its own cell first
@@ -62,9 +54,13 @@ pipeline = ChronosPipeline.from_pretrained(
     torch_dtype=torch.float32,
 )
 
-# --- Forecast: give it the last CONTEXT_HOURS of TRAINING data, ask for 24h ahead ---
+# feed it the last CONTEXT_HOURS as history, ask for 24h ahead
+# (note: context has to be positional here, not a kwarg - the installed
+# version of chronos-forecasting doesn't accept context= and throws a
+# "got an unexpected keyword argument" error otherwise, took me a minute
+# to figure that one out)
 context = torch.tensor(y_train.iloc[-CONTEXT_HOURS:].values, dtype=torch.float32)
-forecast = pipeline.predict(context=context, prediction_length=HORIZON, num_samples=100)
+forecast = pipeline.predict(context, prediction_length=HORIZON, num_samples=100)
 # forecast shape: [num_series, num_samples, horizon] -> take median as point forecast
 pred_median = np.median(forecast[0].numpy(), axis=0)
 pred_low = np.quantile(forecast[0].numpy(), 0.05, axis=0)

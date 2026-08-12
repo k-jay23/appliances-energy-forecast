@@ -1,11 +1,8 @@
 """
-stationarity.py
-----------------
-Part 1 (continued): Formal stationarity testing for the hourly Appliances series.
-- Augmented Dickey-Fuller (ADF) test on the raw series
-- ACF / PACF plots on the raw series
-- First-order and seasonal (24h) differencing
-- ADF re-test on differenced series
+Stationarity checks - basically need this to know if/how much differencing
+to do before fitting SARIMA later. Running ADF on the raw series plus a
+few differenced versions, and looking at ACF/PACF plots for each to check
+if there's leftover seasonal structure.
 """
 
 import pandas as pd
@@ -58,21 +55,22 @@ if __name__ == "__main__":
 
     reports = []
 
-    # 1. Raw series
+    # raw series first - turns out this is already stationary (see report),
+    # but doing the rest anyway since we need the ACF/PACF for the seasonal stuff
     reports.append(adf_report(y, "raw (level)"))
     plot_acf_pacf(y, "Raw series", "05_acf_pacf_raw.png")
 
-    # 2. First-order differenced (removes stochastic trend / short-run non-stationarity)
+    # first-order diff
     y_diff1 = y.diff()
     reports.append(adf_report(y_diff1, "first-difference (d=1)"))
     plot_acf_pacf(y_diff1, "First difference (d=1)", "06_acf_pacf_diff1.png")
 
-    # 3. Seasonal differenced (24h) - removes daily seasonality
+    # seasonal diff (24h) - this is the one that matters, shows the lag-24 spike
     y_seasonal_diff = y.diff(24)
     reports.append(adf_report(y_seasonal_diff, "seasonal difference (24h)"))
     plot_acf_pacf(y_seasonal_diff, "Seasonal difference (24h)", "07_acf_pacf_seasonal_diff.png")
 
-    # 4. Both first + seasonal differenced
+    # both combined, just to be thorough
     y_both = y.diff().diff(24)
     reports.append(adf_report(y_both, "diff(1) + seasonal diff(24)"))
     plot_acf_pacf(y_both, "diff(1) + seasonal diff(24)", "08_acf_pacf_diff1_seasonal.png")

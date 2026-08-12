@@ -1,10 +1,15 @@
 """
-sarimax_grid_search.py (resumable version)
---------------------------------------------
-Same grid search as before, but designed to be run multiple times in a row:
-each run reads what's already in the results CSV, skips combinations already
-done, and works through the remaining ones for up to TIME_BUDGET_SECONDS
-before exiting cleanly. Run it repeatedly until it prints "ALL DONE".
+Grid search over SARIMA(p,d,q) using AIC, per the assignment spec
+(p 0-6, d 0-2, q 0-6 = 147 combos). Seasonal order is fixed at (1,1,1,24)
+rather than also searched - the ACF/PACF from stationarity.py already
+showed the lag-24 spike so I just hardcoded that instead of blowing up
+the search space even more (147 fits was already slow enough on my machine).
+
+Note: this is written to be resumable because a full run through all 147
+combos takes way too long to do in one sitting - it reads whatever's
+already in the output csv, skips those, and does what it can within
+TIME_BUDGET_SECONDS before stopping. Just keep re-running it until you
+see "ALL DONE".
 """
 
 import warnings
@@ -35,6 +40,7 @@ TIME_BUDGET_SECONDS = float(os.environ.get("TIME_BUDGET_SECONDS", 170))
 
 
 def get_done_combos():
+    # figure out what we've already fit so we don't repeat work
     if not OUT_CSV.exists():
         return set()
     df = pd.read_csv(OUT_CSV)
@@ -44,6 +50,10 @@ def get_done_combos():
 def run_grid_search():
     df = load_hourly()
     train, test = train_test_split(df)
+    # only using the last 45 days for the search itself (full 2954-row
+    # training set makes each fit way too slow to search 147 combos with).
+    # once we know the winning order we refit on the FULL training set
+    # separately in sarimax_final.py
     y_search = train[TARGET].iloc[-SEARCH_WINDOW_DAYS * 24:]
 
     all_combos = list(itertools.product(P_RANGE, D_RANGE, Q_RANGE))
@@ -71,10 +81,15 @@ def run_grid_search():
                 y_search, order=(p, d, q), seasonal_order=SEASONAL_ORDER,
                 enforce_stationarity=False, enforce_invertibility=False,
             )
+            # maxiter=50 to keep this from taking forever - some of the
+            # higher order combos don't fully converge with this cap but
+            # still give a usable AIC, noted this as a limitation in the report
             res = model.fit(disp=False, method="lbfgs", maxiter=50)
             aic = res.aic
             converged = not res.mle_retvals.get("warnflag", 0)
         except Exception:
+            # a few combos just fail to fit entirely, catching so the whole
+            # search doesn't die partway through
             aic = np.inf
             converged = False
         elapsed = time.time() - t0

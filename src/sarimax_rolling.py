@@ -1,9 +1,12 @@
 """
-sarimax_rolling.py (resumable)
---------------------------------
-Part 4/8: robust check - repeat the 24h SARIMAX forecast across all 14
-held-out days (refitting each time with the growing history), same idea as
-the rolling check used for the Part 3 benchmarks. Resumable in batches.
+Same rolling-evaluation idea as benchmarks.py, but for SARIMAX. Refits the
+model 14 times (once per test day, each time with a bit more history than
+last) and averages the error. This one's slow - each refit takes ~50s on
+my laptop, so it's resumable same as the grid search script.
+
+Found this genuinely useful: single-day RMSE looked great (159) but the
+rolling average is more like 328, and there's a couple of really bad days
+in there (see the per-day printout) where something unusual happened.
 """
 
 import warnings

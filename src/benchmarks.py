@@ -1,23 +1,7 @@
 """
-benchmarks.py
--------------
-Part 3: Simple "baseline" forecasting methods. These are deliberately basic -
-their whole purpose is to give us a bar that smarter models (SARIMAX, XGBoost,
-foundation models) MUST clear to be worth their extra complexity.
-
-Each function takes the training data and returns a forecast for the next
-24 hours (an array of 24 numbers).
-
-In plain English, what each one does:
-- Mean forecast          : "predict the average of everything we've ever seen"
-- Naive forecast         : "predict tomorrow will look exactly like the last
-                             hour we saw" (flat line)
-- Daily seasonal naive   : "predict each hour will match the SAME HOUR
-                             yesterday" (copies yesterday's shape)
-- Weekly seasonal naive  : "predict each hour will match the SAME HOUR on the
-                             SAME DAY last week" (copies last week's shape)
-- Drift forecast         : "predict a straight-line continuation of the
-                             overall up/down trend across the whole training set"
+The 5 baseline forecasts (mean, naive, daily/weekly seasonal naive, drift).
+These are supposed to be dumb on purpose - the point is everything fancier
+I build later actually needs to beat these to be worth using.
 """
 
 import numpy as np
@@ -35,22 +19,24 @@ plt.rcParams["figure.dpi"] = 110
 
 
 def mean_forecast(train: pd.Series, horizon: int = HORIZON) -> np.ndarray:
+    # just guess the average, every hour
     return np.full(horizon, train.mean())
 
 
 def naive_forecast(train: pd.Series, horizon: int = HORIZON) -> np.ndarray:
+    # guess tomorrow = whatever the last value was (flat line)
     return np.full(horizon, train.iloc[-1])
 
 
 def seasonal_naive_forecast(train: pd.Series, horizon: int = HORIZON, season: int = 24) -> np.ndarray:
-    """Repeat the last `season` observed values (e.g. same hours as yesterday)."""
+    # season=24 -> "copy yesterday", season=168 -> "copy same day last week"
     last_season = train.iloc[-season:].values
     reps = int(np.ceil(horizon / season))
     return np.tile(last_season, reps)[:horizon]
 
 
 def drift_forecast(train: pd.Series, horizon: int = HORIZON) -> np.ndarray:
-    """Naive forecast + a straight-line trend estimated from first to last training point."""
+    # naive but extrapolates a straight line through the whole training set
     y0, yT = train.iloc[0], train.iloc[-1]
     T = len(train) - 1
     slope = (yT - y0) / T if T > 0 else 0
@@ -87,7 +73,7 @@ def run():
     print("=== Benchmark model results (24h-ahead forecast, ranked best first) ===")
     print(results_df.to_string(index=False))
 
-    # Plot: actual vs each benchmark forecast
+    # plot everyone on top of the actual values so you can see how bad naive/drift are
     fig, ax = plt.subplots(figsize=(11, 5))
     ax.plot(y_test_24h.index, y_test_24h.values, label="Actual", color="black", lw=2)
     colors = ["#2b6cb0", "#c05621", "#2f855a", "#805ad5", "#d53f8c"]
@@ -105,7 +91,9 @@ def run():
     print(f"\nSaved metrics to {METRICS_DIR / 'part3_benchmark_metrics.csv'}")
     print(f"Saved plot to {FIG_DIR / '09_benchmark_forecasts.png'}")
 
-    # --- Robustness check: rolling 14-day evaluation instead of a single day ---
+    # single-day test above was a bit suspicious (weekly seasonal naive won
+    # but naive/drift were terrible - turned out training just happened to
+    # end right on an evening peak). doing the rolling check to be sure.
     print("\n=== Robust check: average error across all 14 held-out days (rolling) ===")
     rolling_summary = []
     for name, fn in MODELS.items():

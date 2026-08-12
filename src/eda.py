@@ -1,11 +1,10 @@
 """
-eda.py
-------
-Part 1 (continued): Exploratory analysis of the hourly Appliances series.
-- Full time series plot
-- Average daily profile (hour-of-day seasonality)
-- Average weekly profile (day-of-week seasonality)
-- STL / classical seasonal decomposition
+Quick EDA on the hourly series before doing any actual modelling.
+
+Mostly just plotting stuff to see what patterns are in the data - full
+timeline, average shape by hour of day, by day of week, and an STL
+decomposition to pull out trend/seasonal/residual. Nothing fancy, just
+trying to get a feel for the data.
 """
 
 import pandas as pd
@@ -68,7 +67,8 @@ def plot_weekly_profile(df: pd.DataFrame):
 
 
 def plot_decomposition(df: pd.DataFrame, period: int = 24):
-    """STL decomposition using a daily (24h) period."""
+    # using period=24 since that's the obvious daily cycle from the plots above.
+    # robust=True because appliance spikes are pretty extreme outliers otherwise
     stl = STL(df["Appliances"], period=period, robust=True)
     res = stl.fit()
 
@@ -96,6 +96,7 @@ if __name__ == "__main__":
     plot_weekly_profile(df)
     res = plot_decomposition(df)
 
+    # standard formula for "how much of the variance is seasonal vs just noise"
     print("Seasonal component strength check:")
     import numpy as np
     var_resid = res.resid.var()

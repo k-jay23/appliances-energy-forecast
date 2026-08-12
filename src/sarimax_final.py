@@ -1,12 +1,11 @@
 """
-sarimax_final.py
------------------
-Part 4 (final steps): take the best (p,d,q) found by the grid search,
-refit it on the FULL training set, then:
-  - check residual diagnostics (ACF of residuals + distribution)
-  - forecast the next 24 hours with confidence intervals
-  - score against the real values (RMSE, MAE, MAPE)
-  - also run the 14-day rolling robustness check (same as Part 3 benchmarks)
+Takes the winning (p,d,q) from the grid search and actually uses it -
+refits on the full training data (grid search only used the last 45 days
+for speed), checks the residuals look ok, then forecasts the 24h test window.
+
+BEST_ORDER is hardcoded here from the grid search results rather than read
+dynamically - could have wired that up automatically but honestly just
+copy-pasted the winning order in after eyeballing the results csv.
 """
 
 import warnings
@@ -49,8 +48,9 @@ def main():
     res = fit_sarimax(y_train)
     print(res.summary().tables[0])
 
-    # --- Residual diagnostics ---
-    resid = res.resid[BEST_SEASONAL_ORDER[3] + max(BEST_ORDER):]  # drop initial burn-in
+    # dropping the first bit of residuals since the model needs some data
+    # to "warm up" before its predictions are meaningful (burn-in period)
+    resid = res.resid[BEST_SEASONAL_ORDER[3] + max(BEST_ORDER):]
     fig, axes = plt.subplots(1, 2, figsize=(12, 4))
     plot_acf(resid, lags=48, ax=axes[0])
     axes[0].set_title("ACF of SARIMAX Residuals")
@@ -69,10 +69,11 @@ def main():
     }
     print(f"\nResidual stats: {resid_stats}")
 
-    # --- Forecast next 24h with confidence intervals ---
     fc = res.get_forecast(steps=HORIZON)
     pred_mean = fc.predicted_mean
-    ci = fc.conf_int(alpha=0.05)  # 95% CI
+    ci = fc.conf_int(alpha=0.05)  # 95% CI - heads up, this goes negative
+    # sometimes which obviously can't happen for energy use. noted this
+    # in the report, it's a known thing with gaussian CIs on skewed data
 
     metrics = regression_metrics(y_test_24h.values, pred_mean.values)
     print(f"\n24h-ahead forecast metrics: {metrics}")

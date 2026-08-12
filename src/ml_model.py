@@ -1,16 +1,12 @@
 """
-ml_model.py
------------
-Part 6: Feature-based ML model (XGBoost) using the features built in Part 5.
+Trains the XGBoost model on the features from features.py. Trains both
+the honest and the "conditional" (uses real future weather) versions back
+to back so they're easy to compare - wasn't expecting the conditional one
+to basically not help at all, but that's what came out of it.
 
-We train TWO versions to directly answer Part 9 Question 5 later:
-  1. "true_forecast" - only genuinely-knowable-in-advance features
-  2. "conditional"   - same, PLUS actual future weather/indoor sensor readings
-                       (this is a conditional forecast, not a real one - see
-                       features.py docstring)
-
-Both are evaluated the same way as every previous model: a single 24h-ahead
-forecast, AND a 14-day rolling average, for fair comparison.
+Went with 400 trees / depth 5 / lr 0.05 after a bit of trial and error,
+didn't do a full hyperparameter sweep given time constraints, these just
+seemed reasonable and didn't obviously overfit.
 """
 
 import warnings
@@ -86,7 +82,7 @@ def run():
         model = train_xgb(train_feat)
         models[variant] = model
 
-        # single 24h forecast
+        # same single 24h test as everyone else, for comparability
         pred, actual, feat_eval = evaluate_single_origin(df, model, train_origin_pos, use_fw)
         single_metrics = regression_metrics(actual, pred)
         print(f"Single 24h forecast: {single_metrics}")

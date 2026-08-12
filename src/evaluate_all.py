@@ -1,10 +1,13 @@
 """
-evaluate_all.py
-----------------
-Part 8: Pull together every model's results (Parts 3, 4, 6, and later 7) into
-one master comparison: a single table (both the single-24h-forecast numbers
-and the more robust 14-day rolling average), plus one plot with every
-model's forecast overlaid on the same 24 actual hours.
+Pulls everything together into one big comparison table + a plot with all
+the forecasts overlaid on the actual data. Reads the metrics csvs each
+individual model script already saved, plus refits SARIMAX and XGBoost
+here again just for the plot (the csvs already have the numbers, just
+needed the actual prediction arrays too for plotting).
+
+Chronos numbers get pulled in if that csv exists (it won't unless you've
+run the Colab notebook and dropped the results in) - if it's missing this
+just shows NaN for Chronos in the table instead of erroring out.
 """
 
 import pandas as pd

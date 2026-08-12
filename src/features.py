@@ -1,45 +1,25 @@
 """
-features.py
-------------
-Part 5: Build features for the feature-based ML model (Part 6).
+Building the feature table for the XGBoost model in Part 6.
 
-APPROACH: "direct multi-horizon" tabular forecasting.
-Instead of one row per hour, we build one row per (origin, hours_ahead) pair,
-covering hours_ahead = 1..24. Each row represents: "standing at time
-`origin`, what is appliance use `hours_ahead` hours later?" This lets a
-single regression model learn to forecast any point in the next 24 hours.
+Went with a "direct multi-horizon" setup - one row per (origin,
+hours_ahead) combo instead of one row per hour, so a single model can
+predict any hour in the next day (hours_ahead just becomes a feature).
+Took me a bit to land on this design - the tricky part is that features
+like "value 1 hour ago" don't actually work for a 24h horizon because by
+hour 5 you don't know what happened at hour 4 yet. Worked around that by
+using lags relative to the TARGET hour instead of the origin, for anything
+where lag >= max horizon (24h and 168h lags are always safe this way,
+1h lag isn't so that stays relative to the origin only).
 
-FEATURES (all designed to be knowable at the forecast origin - see notes):
-- hours_ahead            : how far into the future this row forecasts (1-24)
-- target_hour_sin/cos    : hour-of-day of the TARGET time, cyclically encoded
-- target_dow_sin/cos     : day-of-week of the TARGET time, cyclically encoded
-- is_weekend             : whether the TARGET time falls on Sat/Sun
-- recent_lag_1           : last actually-observed Appliances value AT THE ORIGIN
-- recent_lag_24          : Appliances value 24h before the origin
-- recent_lag_168         : Appliances value 168h (1 week) before the origin
-- rolling_mean_24        : mean of the last 24h of Appliances, ending at origin
-- rolling_std_24         : std of the last 24h of Appliances, ending at origin
-- rolling_mean_168       : mean of the last 168h (1 week), ending at origin
-- target_lag24           : Appliances value exactly 24h before the TARGET time
-                            (always knowable: target - 24h <= origin whenever
-                            hours_ahead <= 24, i.e. always in this dataset)
-- target_lag168          : Appliances value exactly 168h before the TARGET time
-                            (always knowable for the same reason)
-
-TWO FEATURE SETS ARE BUILT (this matters for Part 9, Question 5):
-- "true_forecast" set  : only the features above (all genuinely knowable
-                          in advance without needing to already know the
-                          future weather).
-- "conditional" set    : the true_forecast features PLUS the actual indoor
-                          (T1-T9, RH_1-RH_9) and outdoor (T_out, RH_out,
-                          Windspeed, Visibility, Press_mm_hg, Tdewpoint)
-                          sensor readings AT THE TARGET TIME. These are
-                          real historical readings, so they make the model
-                          look artificially good - in a real deployment you
-                          would not know tomorrow's indoor temperature
-                          exactly, only a weather FORECAST for outdoor
-                          variables. This is intentionally included so we
-                          can measure and discuss the gap it creates.
+Two versions of the feature set get built (see build_dataset's
+use_future_weather flag):
+- honest version: only stuff you'd actually know standing at the origin
+  (lags, rolling stats, time-of-day/day-of-week of the target)
+- "conditional" version: same but also includes the REAL future
+  weather/indoor sensor readings, i.e. cheating a bit. Wanted to measure
+  how much this actually helps (spoiler: not much, it's discussed in the
+  report under Q5 - this isn't a real forecast if you're using future
+  weather you couldn't have actually known yet).
 """
 
 import numpy as np
@@ -87,7 +67,8 @@ def _row_features(df: pd.DataFrame, y: pd.Series, origin_idx: int, h: int,
 
 def build_dataset(df: pd.DataFrame, origin_positions, horizon: int = 24,
                    use_future_weather: bool = True) -> pd.DataFrame:
-    """Build the direct multi-horizon feature table for a list of origin positions (iloc ints)."""
+    # origin_positions are just row indices (iloc-style ints), one feature
+    # row gets built per origin per hour ahead (1 to horizon)
     y = df["Appliances"]
     rows = [
         _row_features(df, y, origin_idx, h, use_future_weather)
@@ -98,7 +79,8 @@ def build_dataset(df: pd.DataFrame, origin_positions, horizon: int = 24,
 
 
 def training_origin_positions(n_train: int, horizon: int = 24):
-    """All valid origins strictly within the training period."""
+    # need MIN_HISTORY_HOURS before an origin (for the lag_168 feature) and
+    # `horizon` hours after it (so the target actually exists in training data)
     return list(range(MIN_HISTORY_HOURS, n_train - horizon))
 
 
